@@ -21,6 +21,19 @@ classdef app < handle
             raw_info = cell(info_object,'ConvertTypes',{'all'});
             info = notocord_mpi.info(obj,raw_info);
         end
+        function appendEvents(obj,stream_name,labels,times)
+            %Only one Event marker can be written at a time. The function
+            %can be called multiple times but the writing sequence must
+            %follow the chronological order. ERRORCODE =
+            %NSAppendMarker(MPI, FILENAME, STREAMNAME, LABEL, TIME)
+            for i = 1:length(labels)
+                error_code = NSAppendMarker(obj.mpi,obj.file_path,...
+                    stream_name,labels{i},round(times(i)*1e6));
+                if error_code ~= 0
+                   handleErrorCode(obj,error_code) 
+                end
+            end
+        end
         function fs = getSamplingRate(obj,module_name,stream_name)
             %API doesn't provide this, we'll figure it out through trial
             %and error :/
@@ -39,10 +52,23 @@ classdef app < handle
             end
             fs = NaN;
         end
+        function [data,time] = getMarkerData(obj,module_name,stream_name,start_time,duration)
+            [error_code, time_net, data_net] = NSGetData(obj.mpi,obj.file_path, ...
+               module_name, stream_name, start_time, duration);
+           handleErrorCode(obj,error_code)
+           
+           time = double(time_net)/1e6;
+           data = string(cell(data_net));
+           
+           %data contains 2 columns, with headers
+           
+           data = data(2:end,2);
+        end
         function [data,time] = getData(obj,module_name,stream_name,start_time,duration)
            [error_code, time_net, data_net] = NSGetData(obj.mpi,obj.file_path, ...
                module_name, stream_name, start_time, duration);
            handleErrorCode(obj,error_code)
+           
            %Assumption ...
            %TODO: can we do some bit division shifting to
            %divide before casting???
@@ -59,6 +85,9 @@ classdef app < handle
                     error('NSS file cannot found')
                 case -2
                     %I ran into this when the file was read-only
+                    %
+                    %I also ran into this when the file was open in
+                    %Notocord-Hem viewer
                     error('NSS file cannot be opened')
                 case -3
                     error('File not created')
